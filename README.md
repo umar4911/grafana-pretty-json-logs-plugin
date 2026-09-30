@@ -45,19 +45,18 @@ and environment-specific values belong in GitHub Secrets or Variables.
 
 - `CI` runs the type checker, tests, and production build for pushes and pull
   requests to `main`.
-- `Release` runs Grafana's official build action for tags such as `v0.1.0`. The
-  tag must match both `package.json` and `src/plugin.json`. It validates and
-  packages the plugin, optionally signs it, creates build provenance for this
-  public repository, and opens a draft GitHub release.
+- `Release` runs for tags such as `v0.1.0`. The tag must match both
+  `package.json` and `src/plugin.json`. It validates and builds the frontend,
+  then attaches an installable `umar-prettypino-app-<version>.zip` to the GitHub
+  release. It can also be run manually for an existing tag.
 - Deployment to the Ubuntu VPS is manual. Build or download a release package,
   copy it to the server, install it under `/var/lib/grafana/plugins`, and restart
   `grafana-server` using the procedure below.
 
-Private signing requires `GRAFANA_ACCESS_POLICY_TOKEN` and the exact Grafana
-root URL in `GRAFANA_ROOT_URLS`. The organization prefix in the plugin ID must
-match the Grafana Cloud organization that issued the token. Until that is
-configured, releases remain unsigned and the self-hosted Grafana instance must
-explicitly allow `umar-prettypino-app`.
+The release package is unsigned. The self-hosted Grafana instance must
+explicitly allow `umar-prettypino-app`. Private signing can be added later; the
+organization prefix in the plugin ID must match the Grafana Cloud organization
+that issues the signing token.
 
 ## Manual deployment to Ubuntu
 
@@ -70,8 +69,7 @@ grafana-server -v || grafana server -v
 
 ### 1. Build and package the plugin
 
-You can download the ZIP produced by a tagged GitHub release, or build the same
-package locally:
+Build the installable ZIP locally with Node.js 22:
 
 ```sh
 npm ci
@@ -87,6 +85,11 @@ cp "$release_dir/umar-prettypino-app-0.1.0.zip" .
 
 The ZIP must contain one top-level directory named `umar-prettypino-app`, with
 `plugin.json` directly inside it.
+
+GitHub automatically adds **Source code (zip)** and **Source code (tar.gz)** to
+each tag. Those archives contain the uncompiled repository and cannot be
+installed directly in Grafana. Only use a compiled plugin ZIP attached as a
+release asset, or create the ZIP with the commands above.
 
 ### 2. Copy the package to the VPS
 
@@ -113,6 +116,8 @@ Run the following on the VPS. Change the archive version when deploying a newer
 release:
 
 ```sh
+set -euo pipefail
+
 archive=/tmp/umar-prettypino-app-0.1.0.zip
 staging="$(mktemp -d)"
 backup="/var/backups/grafana-plugins/umar-prettypino-app-$(date -u +%Y%m%dT%H%M%SZ)"
