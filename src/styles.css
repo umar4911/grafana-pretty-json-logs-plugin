@@ -57,12 +57,14 @@
   margin: 4px 0 0;
 }
 .pino-header-actions,
-.pino-toolbar,
-.pino-filters {
+.pino-toolbar {
   display: flex;
   align-items: center;
   gap: 10px;
-  flex-wrap: wrap;
+}
+.pino-toolbar {
+  flex-wrap: nowrap;
+  width: 100%;
 }
 .pino-header-actions {
   gap: 14px;
@@ -115,23 +117,47 @@
   align-items: stretch;
   overflow: hidden;
   background: var(--panel);
+  min-width: 0;
+  height: 36px;
+}
+.pino-toolbar .pino-select {
+  flex: 1 1 180px;
+}
+.pino-toolbar .pino-select:first-child {
+  flex-grow: 1.35;
+}
+.pino-toolbar .pino-select:nth-child(4) {
+  flex-grow: 0.75;
 }
 .pino-select > span {
   color: var(--muted);
   padding: 7px 9px;
   border-right: 1px solid var(--border);
+  white-space: nowrap;
 }
 .pino-select select {
   border: 0;
   padding: 7px 28px 7px 9px;
-  max-width: 245px;
+  width: 100%;
+  min-width: 0;
+  color: var(--text);
+  -webkit-text-fill-color: var(--text);
+  color-scheme: dark;
+}
+.pino-select option {
+  color: var(--text);
+  background: var(--input);
+}
+.pino-light .pino-select select {
+  color-scheme: light;
 }
 .pino-auto {
   display: flex;
   gap: 7px;
   align-items: center;
   color: var(--muted);
-  margin-left: auto;
+  font-size: 12px;
+  white-space: nowrap;
 }
 .pino-auto input {
   accent-color: var(--blue);
@@ -143,37 +169,16 @@
   margin: 16px 0;
   background: var(--panel);
 }
-.pino-query {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin: 15px 0;
-}
-.pino-query label {
-  font-size: 12px;
-  color: var(--muted);
-}
-.pino-query input {
-  border: 1px solid var(--border);
-  padding: 8px 10px;
-  flex: 1;
-  min-width: 100px;
-  border-radius: 4px;
-  font-family: monospace;
-}
 .pino-app .pino-primary {
   background: #3274d9;
   color: #fff;
   border-color: #3274d9;
 }
-.pino-filters {
-  margin: 15px 0 12px;
-}
 .pino-app .pino-quiet {
   border: none;
   background: transparent;
   color: var(--muted);
-  margin-left: auto;
+  padding-inline: 6px;
 }
 .pino-search {
   display: flex;
@@ -304,6 +309,48 @@
 }
 .pino-legend span {
   margin-left: auto;
+}
+.pino-volume-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  padding: 0 16px 16px;
+}
+.pino-app .pino-volume-stats button {
+  min-width: 0;
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  text-align: left;
+  border-color: var(--border);
+  background: var(--bg);
+}
+.pino-volume-stats button span {
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-size: 10px;
+}
+.pino-volume-stats button strong {
+  font-size: 17px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+.pino-volume-stats button.info strong {
+  color: #73b7f2;
+}
+.pino-volume-stats button.warn strong {
+  color: #f5bd63;
+}
+.pino-volume-stats button.error strong {
+  color: #ff7c80;
+}
+.pino-app .pino-volume-stats button[aria-pressed="true"] {
+  border-color: currentColor;
+  box-shadow: inset 0 0 0 1px currentColor;
+  background: var(--hover);
 }
 .pino-table-wrap {
   overflow: auto;
@@ -542,6 +589,15 @@
   }
   .pino-auto {
     margin-left: 0;
+  }
+  .pino-toolbar {
+    flex-wrap: wrap;
+  }
+  .pino-toolbar .pino-select {
+    flex-basis: calc(50% - 5px);
+  }
+  .pino-volume-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .pino-message small {
     display: none;

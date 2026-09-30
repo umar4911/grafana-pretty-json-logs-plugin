@@ -21,6 +21,7 @@ import "./styles.css";
 import { LogDrawer } from "./LogDrawer";
 const LIMIT = 1000;
 const LOG_BATCH_SIZE = 100;
+const DEFAULT_QUERY = '{container=~".+"}';
 function Select({
   label,
   value,
@@ -55,8 +56,6 @@ export function App() {
     [],
   );
   const [source, setSource] = useState(sources[0]?.uid ?? "demo");
-  const [query, setQuery] = useState('{container=~".+"}');
-  const [appliedQuery, setAppliedQuery] = useState(query);
   const [selection, setSelection] = useState<RangeSelection>({
     kind: "relative",
     minutes: 15,
@@ -105,7 +104,7 @@ export function App() {
       .fetch<LokiResponse>({
         url: `/api/datasources/proxy/uid/${encodeURIComponent(source)}/loki/api/v1/query_range`,
         params: {
-          query: appliedQuery,
+          query: DEFAULT_QUERY,
           start: `${start}000000`,
           end: `${end}000000`,
           limit: LIMIT,
@@ -137,7 +136,7 @@ export function App() {
             String(
               err?.data?.message ||
                 err?.message ||
-                "Loki query failed. Check the data source, permissions, and LogQL query.",
+                "Loki query failed. Check the data source and its permissions.",
             ),
           );
           setLoading(false);
@@ -147,7 +146,7 @@ export function App() {
       request.current++;
       subscription.unsubscribe();
     };
-  }, [source, appliedQuery, selection, refresh]);
+  }, [source, selection, refresh]);
   useEffect(() => {
     if (!autoRefresh || loading) {
       return;
@@ -161,16 +160,30 @@ export function App() {
   useEffect(() => {
     setVisibleCount(LOG_BATCH_SIZE);
   }, [search, filters, ascending]);
-  const filtered = useMemo(
+  const facetedLogs = useMemo(
     () =>
       logs.filter(
         (log) =>
-          Object.entries(filters).every(
-            ([key, value]) =>
-              !value || log[key as "container" | "level"] === value,
-          ) && matchesSearch(log, search),
+          (!filters.container || log.container === filters.container) &&
+          matchesSearch(log, search),
       ),
     [logs, filters, search],
+  );
+  const filtered = useMemo(
+    () =>
+      facetedLogs.filter(
+        (log) => !filters.level || log.level === filters.level,
+      ),
+    [facetedLogs, filters.level],
+  );
+  const volumeStats = useMemo(
+    () => ({
+      total: facetedLogs.length,
+      info: facetedLogs.filter((log) => log.level === "info").length,
+      warn: facetedLogs.filter((log) => log.level === "warn").length,
+      error: facetedLogs.filter((log) => log.level === "error").length,
+    }),
+    [facetedLogs],
   );
   const sorted = useMemo(
     () => (ascending ? [...filtered].reverse() : filtered),
@@ -201,7 +214,7 @@ export function App() {
     observer.observe(target);
     return () => observer.disconnect();
   }, [hasMoreRows, sorted.length, visibleCount]);
-  const explore = `${config.appSubUrl ?? ""}/explore?schemaVersion=1&panes=${encodeURIComponent(JSON.stringify({ A: { datasource: source, queries: [{ refId: "A", expr: appliedQuery, queryType: "range", datasource: { type: "loki", uid: source } }], range: { from: String(range.start), to: String(range.end) } } }))}`;
+  const explore = `${config.appSubUrl ?? ""}/explore?schemaVersion=1&panes=${encodeURIComponent(JSON.stringify({ A: { datasource: source, queries: [{ refId: "A", expr: DEFAULT_QUERY, queryType: "range", datasource: { type: "loki", uid: source } }], range: { from: String(range.start), to: String(range.end) } } }))}`;
   const drilldown = drilldownUrl(config.appSubUrl ?? "", source, range);
   const timeLabel = (time: number) =>
     new Date(time).toLocaleTimeString([], {
@@ -306,7 +319,37 @@ export function App() {
             { value: "custom", label: "Custom date/time range…" },
           ]}
         />
+        <Select
+          label="Container"
+          value={filters.container}
+          onChange={(value) =>
+            setFilters((previous) => ({ ...previous, container: value }))
+          }
+          options={[
+            { value: "", label: "All containers" },
+            ...Array.from(
+              new Set([...logs.map((log) => log.container), filters.container]),
+            )
+              .filter(Boolean)
+              .sort()
+              .map((value) => ({ value, label: value })),
+          ]}
+        />
+        <Select
+          label="Severity"
+          value={filters.level}
+          onChange={(value) =>
+            setFilters((previous) => ({ ...previous, level: value }))
+          }
+          options={[
+            { value: "", label: "All severities" },
+            ...Array.from(new Set([...levels, filters.level]))
+              .filter(Boolean)
+              .map((value) => ({ value, label: value })),
+          ]}
+        />
         <button
+          className="pino-date-button"
           aria-expanded={customOpen}
           onClick={() => {
             setCustomFrom(localDateTime(range.start));
@@ -331,6 +374,16 @@ export function App() {
           />{" "}
           Refresh every 10s
         </label>
+        <button
+          className="pino-quiet"
+          onClick={() => {
+            setFilters({ container: "", level: "" });
+            setSearch("");
+          }}
+          disabled={!filters.container && !filters.level && !search}
+        >
+          Reset
+        </button>
       </section>
       {customOpen && (
         <form
@@ -392,76 +445,12 @@ export function App() {
         {new Date(range.end).toLocaleString()} ·{" "}
         {selection.kind === "absolute" ? "Fixed range" : "Relative range"}
       </div>
-      {source === "demo" ? (
+      {source === "demo" && (
         <div className="pino-notice">
           Demo mode uses generated Pino logs. Select a configured Loki data
           source to query your own logs.
         </div>
-      ) : (
-        <form
-          className="pino-query"
-          onSubmit={(event) => {
-            event.preventDefault();
-            if (query === appliedQuery) {
-              setRefresh((value) => value + 1);
-            } else {
-              setAppliedQuery(query);
-            }
-          }}
-        >
-          <label htmlFor="pino-logql">LogQL</label>
-          <input
-            id="pino-logql"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            spellCheck={false}
-            required
-          />
-          <button className="pino-primary" disabled={loading}>
-            Run query
-          </button>
-        </form>
       )}
-      <section className="pino-filters" aria-label="Filter loaded logs">
-        {Object.keys(filters).map((key) => (
-          <Select
-            key={key}
-            label={
-              key === "level" ? "Severity" : key[0].toUpperCase() + key.slice(1)
-            }
-            value={filters[key]}
-            onChange={(value) =>
-              setFilters((previous) => ({ ...previous, [key]: value }))
-            }
-            options={[
-              { value: "", label: "All" },
-              ...Array.from(
-                new Set([
-                  ...(key === "level"
-                    ? levels
-                    : logs.map((log) => log[key as "container"])),
-                  filters[key],
-                ]),
-              )
-                .filter(Boolean)
-                .sort()
-                .map((value) => ({ value, label: value })),
-            ]}
-          />
-        ))}
-        <button
-          className="pino-quiet"
-          onClick={() => {
-            setFilters({
-              container: "",
-              level: "",
-            });
-            setSearch("");
-          }}
-        >
-          Reset filters
-        </button>
-      </section>
       <div className="pino-search">
         <span aria-hidden="true">⌕</span>
         <input
@@ -473,8 +462,7 @@ export function App() {
         <kbd>AND</kbd>
       </div>
       <div className="pino-hint">
-        Filters and search apply to loaded logs. Use LogQL to search the full
-        time range. Times are local.
+        Filters and search apply to loaded logs. Times are local.
       </div>
       {error && (
         <div className="pino-error" role="alert">
@@ -522,6 +510,26 @@ export function App() {
           <i /> Matching logs{" "}
           <span>Updated {new Date(updatedAt).toLocaleTimeString()}</span>
         </div>
+        <div className="pino-volume-stats" aria-label="Filter by severity">
+          {(
+            [
+              ["", "Total", volumeStats.total],
+              ["info", "Info", volumeStats.info],
+              ["warn", "Warn", volumeStats.warn],
+              ["error", "Error", volumeStats.error],
+            ] as const
+          ).map(([level, label, count]) => (
+            <button
+              key={label}
+              className={level || "total"}
+              aria-pressed={filters.level === level}
+              onClick={() => setFilters((previous) => ({ ...previous, level }))}
+            >
+              <span>{label}</span>
+              <strong>{count.toLocaleString()}</strong>
+            </button>
+          ))}
+        </div>
       </section>
       <section
         className="pino-panel pino-log-panel"
@@ -534,7 +542,7 @@ export function App() {
             <p>
               {loading
                 ? "Fetching logs…"
-                : `${filtered.length} matching / ${logs.length} loaded${logs.length >= LIMIT ? ` · limit of ${LIMIT} reached; narrow your LogQL query or time range` : ""}`}
+                : `${filtered.length} matching / ${logs.length} loaded${logs.length >= LIMIT ? ` · limit of ${LIMIT} reached; narrow the time range` : ""}`}
             </p>
           </div>
           <button onClick={() => setAscending((value) => !value)}>
@@ -614,7 +622,7 @@ export function App() {
                 ? "Resolve the query error above and try again."
                 : logs.length
                   ? "No logs match these filters. Try clearing the search or resetting filters."
-                  : "No logs in this time range. Try a wider time range or another LogQL selector."}
+                  : "No logs in this time range. Try a wider time range."}
           </div>
         )}
         {rows.length > 0 && (
