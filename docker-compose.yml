@@ -1,0 +1,17 @@
+services:
+  grafana:
+    image: grafana/grafana:12.2.0
+    ports:
+      - "127.0.0.1:3000:3000"
+    environment:
+      GF_PLUGINS_ALLOW_LOADING_UNSIGNED_PLUGINS: umar-prettypino-app
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+    volumes:
+      - ./dist:/var/lib/grafana/plugins/umar-prettypino-app:ro
+      - ./provisioning:/etc/grafana/provisioning:ro
+  loki:
+    image: grafana/loki:3.5.0
+    ports:
+      - "127.0.0.1:3100:3100"
+    command: -config.file=/etc/loki/local-config.yaml

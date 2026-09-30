@@ -1,0 +1,28 @@
+{
+  "$schema": "https://raw.githubusercontent.com/grafana/grafana/main/docs/sources/developers/plugins/plugin.schema.json",
+  "type": "app",
+  "name": "Pretty Pino Logs",
+  "id": "umar-prettypino-app",
+  "info": {
+    "description": "Explore structured Pino logs with readable messages and request context.",
+    "author": { "name": "Umar" },
+    "keywords": ["logs", "pino", "loki"],
+    "logos": { "small": "img/logo.svg", "large": "img/logo.svg" },
+    "links": [],
+    "screenshots": [
+      { "name": "Pretty Pino Logs viewer", "path": "img/screenshot.jpg" }
+    ],
+    "version": "0.1.0",
+    "updated": "2026-10-01"
+  },
+  "includes": [
+    {
+      "type": "page",
+      "name": "Pretty Pino Logs",
+      "path": "/a/umar-prettypino-app/explore",
+      "addToNav": true,
+      "defaultNav": true
+    }
+  ],
+  "dependencies": { "grafanaDependency": ">=12.2.0", "plugins": [] }
+}
