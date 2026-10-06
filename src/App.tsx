@@ -167,7 +167,7 @@ export function App() {
     };
   }, [source, selection, live, refresh]);
   useEffect(() => {
-    if (!refreshInterval || loading) {
+    if (!live || !refreshInterval || loading) {
       return;
     }
     const timer = window.setTimeout(
@@ -175,7 +175,7 @@ export function App() {
       refreshInterval * 1000,
     );
     return () => window.clearTimeout(timer);
-  }, [refreshInterval, loading, refresh]);
+  }, [live, refreshInterval, loading, refresh]);
   useEffect(() => {
     setVisibleCount(LOG_BATCH_SIZE);
   }, [search, filters, ascending]);
@@ -397,7 +397,14 @@ export function App() {
             className="pino-refresh-rate"
             label="Refresh"
             value={String(refreshInterval)}
-            onChange={(value) => setRefreshInterval(Number(value))}
+            onChange={(value) => {
+              const interval = Number(value);
+              setRefreshInterval(interval);
+              setLive(interval > 0);
+              if (interval > 0) {
+                setRefresh((current) => current + 1);
+              }
+            }}
             options={[
               { value: "0", label: "Off" },
               { value: "3", label: "Every 3s" },
@@ -418,6 +425,8 @@ export function App() {
               }
               if (next) {
                 setRefresh((value) => value + 1);
+              } else {
+                setRefreshInterval(0);
               }
             }}
           >
