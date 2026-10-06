@@ -76,13 +76,11 @@ Build the installable ZIP locally with Node.js 22:
 npm ci
 npm run typecheck
 npm test
-npm run build
-
-release_dir="$(mktemp -d)"
-cp -R dist "$release_dir/umar-prettypino-app"
-(cd "$release_dir" && zip -qr umar-prettypino-app-0.1.0.zip umar-prettypino-app)
-cp "$release_dir/umar-prettypino-app-0.1.0.zip" .
+npm run package
 ```
+
+`npm run build` creates only `dist/`. `npm run package` rebuilds `dist/` and
+creates `umar-prettypino-app-<version>.zip` in the repository root.
 
 The ZIP must contain one top-level directory named `umar-prettypino-app`, with
 `plugin.json` directly inside it.
