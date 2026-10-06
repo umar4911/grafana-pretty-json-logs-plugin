@@ -17,18 +17,18 @@ Open http://localhost:3000/a/umar-prettypino-app/explore and sign in with the **
 
 For an existing Grafana 12.2+ instance, copy `dist` to its plugin directory as `umar-prettypino-app`, allow the unsigned plugin in a development environment, restart Grafana, and enable Pretty Pino Logs under Administration → Plugins. Production distribution requires Grafana plugin signing. Select your configured Loki data source. The viewer uses `{container=~".+"}` internally, and credentials remain in Grafana's data-source configuration.
 
-For a standalone UI preview without Docker, run `npm run preview` and open http://localhost:4173. This preview uses only generated sample logs; live data-source queries require Grafana.
+For a standalone UI preview without Docker, run `npm run preview` and open http://localhost:4173. The preview exposes a mock Loki data source backed by generated logs; production only lists Loki data sources configured in Grafana.
 
 ## Viewer behavior
 
-- Preset relative time ranges and arbitrary custom start/end dates with millisecond precision in local time. Custom ranges stay fixed during refresh. Manual refresh, optional 10-second polling, and an Explore link carry the executed LogQL query and time range. Logs Drilldown opens the selected data source and time range (requires the Grafana Logs Drilldown app); it does not transfer the LogQL query or local filters. Both navigation buttons are visible but disabled in demo mode.
+- Preset relative time ranges and arbitrary custom start/end dates with millisecond precision in local time. Custom ranges stay fixed during refresh unless Live is enabled. Automatic refresh supports off, 3, 5, 10, 30, or 60 seconds. Live moves the range end to the current time and enables five-second refresh when no interval is selected. Explore carries the internal LogQL query and time range. Logs Drilldown opens the selected data source and time range (requires the Logs Drilldown app); it does not transfer local filters.
 - Data source, time range, container, and severity share one compact toolbar. Container and severity filter the **loaded results**. Container names come from `container`, `container_name`, or `docker_container_name` labels, then Pino `container`, `container_name`, or `hostname`.
 - Search combines terms with AND: `level=ERROR requestId=req-0001`, `req.method=POST`, `msg="request completed"`, or plain text. `key=value` compares exact values; severity accepts numeric Pino levels or case-insensitive names. Plain text is case-insensitive. Values containing spaces must be quoted. This is a small search syntax, not LogQL.
 - Up to 1,000 latest entries per query. The first 100 logs render immediately, then another 100 are appended whenever the end of the list approaches; there are no page controls. Both filters and histogram operate on those loaded entries, **not a full-range backend count**. A notice appears when the limit is reached. Narrow the time range to find older or otherwise excluded entries.
 - Total, info, warn, and error counts appear beneath the volume chart. Clicking a count applies that severity; clicking Total clears the severity filter. Counts continue to reflect the active container and text search.
 - Maps Pino 10/20/30/40/50/60 to trace/debug/info/warn/error/fatal. Preserves raw JSON and unknown fields. Malformed JSON and plain text remain readable. Loki timestamps control ordering and histogram buckets; the original Pino `time` remains in details.
 - Click a log to open a full-height right sidebar with the selected message, timestamp, container, and severity. Search its keys and values, expand or collapse JSON objects and arrays, switch to stream labels, and copy the raw line. Close with Escape, the close button, or the backdrop. The sidebar search leaves the main log search unchanged. Rendering uses React text nodes, never raw HTML.
-- Demo mode is explicitly labeled and works without a Loki data source. It never activates as a fallback for a failed live query.
+- Only configured Loki data sources appear in production. If none exists, the viewer shows a configuration message and does not substitute generated data.
 
 ## Validation
 

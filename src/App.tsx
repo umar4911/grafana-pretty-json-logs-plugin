@@ -9,7 +9,6 @@ import {
   LokiResponse,
   matchesSearch,
 } from "./logs";
-import { demoLogs } from "./demo";
 import {
   RangeSelection,
   resolveRange,
@@ -27,19 +26,24 @@ function Select({
   value,
   onChange,
   options,
+  className = "",
+  disabled = false,
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
   options: Array<{ value: string; label: string }>;
+  className?: string;
+  disabled?: boolean;
 }) {
   return (
-    <label className="pino-select">
+    <label className={`pino-select ${className}`}>
       <span>{label}</span>
       <select
         value={value}
         onChange={(event) => onChange(event.target.value)}
         aria-label={label}
+        disabled={disabled}
       >
         {options.map((option) => (
           <option key={option.value} value={option.value}>
@@ -52,10 +56,19 @@ function Select({
 }
 export function App() {
   const sources = useMemo(
-    () => getDataSourceSrv().getList({ type: "loki" }),
+    () =>
+      getDataSourceSrv()
+        .getList({ type: "loki" })
+        .filter(
+          (item) =>
+            item.uid &&
+            item.name &&
+            item.uid.toLowerCase() !== "grafana" &&
+            !/^[-\s]*grafana[-\s]*$/i.test(item.name),
+        ),
     [],
   );
-  const [source, setSource] = useState(sources[0]?.uid ?? "demo");
+  const [source, setSource] = useState(sources[0]?.uid ?? "");
   const [selection, setSelection] = useState<RangeSelection>({
     kind: "relative",
     minutes: 15,
@@ -68,7 +81,8 @@ export function App() {
   const [rangeError, setRangeError] = useState("");
   const [updatedAt, setUpdatedAt] = useState(Date.now());
   const [refresh, setRefresh] = useState(0);
-  const [autoRefresh, setAutoRefresh] = useState(false);
+  const [refreshInterval, setRefreshInterval] = useState(0);
+  const [live, setLive] = useState(false);
   const [search, setSearch] = useState("");
   const [filters, setFilters] = useState<Record<string, string>>({
     container: "",
@@ -88,15 +102,20 @@ export function App() {
   const loadMoreRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const id = ++request.current;
-    const { start, end } = resolveRange(selection);
+    const selectedRange = resolveRange(selection);
+    const duration = selectedRange.end - selectedRange.start;
+    const end = live ? Date.now() : selectedRange.end;
+    const start = live ? end - duration : selectedRange.start;
     setUpdatedAt(Date.now());
     setLoading(true);
     setError("");
     setLogs([]);
     setVisibleCount(LOG_BATCH_SIZE);
     setRange({ start, end });
-    if (source === "demo") {
-      setLogs(demoLogs(end, (end - start) / 60000));
+    if (!source) {
+      setError(
+        "No Loki data source is configured. Add Loki in Grafana Connections, then reload this page.",
+      );
       setLoading(false);
       return;
     }
@@ -146,17 +165,17 @@ export function App() {
       request.current++;
       subscription.unsubscribe();
     };
-  }, [source, selection, refresh]);
+  }, [source, selection, live, refresh]);
   useEffect(() => {
-    if (!autoRefresh || loading) {
+    if (!refreshInterval || loading) {
       return;
     }
     const timer = window.setTimeout(
       () => setRefresh((value) => value + 1),
-      10000,
+      refreshInterval * 1000,
     );
     return () => window.clearTimeout(timer);
-  }, [autoRefresh, loading, refresh]);
+  }, [refreshInterval, loading, refresh]);
   useEffect(() => {
     setVisibleCount(LOG_BATCH_SIZE);
   }, [search, filters, ascending]);
@@ -236,20 +255,18 @@ export function App() {
           <p>Structured logs. A clearer picture.</p>
         </div>
         <div className="pino-header-actions">
-          <span className="pino-tag">
-            {source === "demo" ? "Sample data" : "Loki"}
-          </span>
-          {source === "demo" ? (
+          <span className="pino-tag">Loki</span>
+          {!source ? (
             <>
               <button
                 disabled
-                title="Select a Loki data source in Grafana to open Explore"
+                title="Configure a Loki data source to open Explore"
               >
                 Open in Explore ↗
               </button>
               <button
                 disabled
-                title="Select a Loki data source in Grafana to open Logs Drilldown"
+                title="Configure a Loki data source to open Logs Drilldown"
               >
                 Logs Drilldown ↗
               </button>
@@ -275,115 +292,148 @@ export function App() {
         </div>
       </header>
       <section className="pino-toolbar" aria-label="Query controls">
-        <Select
-          label="Data source"
-          value={source}
-          onChange={(value) => {
-            setSource(value);
-            setFilters({
-              container: "",
-              level: "",
-            });
-          }}
-          options={[
-            ...sources.map((s) => ({ value: s.uid, label: s.name })),
-            { value: "demo", label: "Demo · sample Pino logs" },
-          ]}
-        />
-        <Select
-          label="Time range"
-          value={
-            selection.kind === "relative" ? String(selection.minutes) : "custom"
-          }
-          onChange={(value) => {
-            if (value === "custom") {
+        <div className="pino-toolbar-filters">
+          <Select
+            label="Data source"
+            value={source}
+            disabled={!sources.length}
+            onChange={(value) => {
+              setSource(value);
+              setFilters({ container: "", level: "" });
+            }}
+            options={
+              sources.length
+                ? sources.map((item) => ({
+                    value: item.uid,
+                    label: item.name,
+                  }))
+                : [{ value: "", label: "No Loki data source" }]
+            }
+          />
+          <Select
+            label="Time range"
+            value={
+              selection.kind === "relative"
+                ? String(selection.minutes)
+                : "custom"
+            }
+            onChange={(value) => {
+              if (value === "custom") {
+                setCustomFrom(localDateTime(range.start));
+                setCustomTo(localDateTime(range.end));
+                setRangeError("");
+                setCustomOpen(true);
+              } else {
+                setSelection({ kind: "relative", minutes: Number(value) });
+                setCustomOpen(false);
+              }
+            }}
+            options={[
+              ...[5, 15, 30, 60, 360, 1440].map((n) => ({
+                value: String(n),
+                label:
+                  n < 60
+                    ? `Last ${n} minutes`
+                    : n < 1440
+                      ? `Last ${n / 60} ${n === 60 ? "hour" : "hours"}`
+                      : "Last 24 hours",
+              })),
+              { value: "custom", label: "Custom date/time range…" },
+            ]}
+          />
+          <Select
+            label="Container"
+            value={filters.container}
+            onChange={(value) =>
+              setFilters((previous) => ({ ...previous, container: value }))
+            }
+            options={[
+              { value: "", label: "All containers" },
+              ...Array.from(
+                new Set([
+                  ...logs.map((log) => log.container),
+                  filters.container,
+                ]),
+              )
+                .filter(Boolean)
+                .sort()
+                .map((value) => ({ value, label: value })),
+            ]}
+          />
+          <Select
+            label="Severity"
+            value={filters.level}
+            onChange={(value) =>
+              setFilters((previous) => ({ ...previous, level: value }))
+            }
+            options={[
+              { value: "", label: "All severities" },
+              ...Array.from(new Set([...levels, filters.level]))
+                .filter(Boolean)
+                .map((value) => ({ value, label: value })),
+            ]}
+          />
+        </div>
+        <div className="pino-toolbar-actions">
+          <button
+            className="pino-date-button"
+            aria-expanded={customOpen}
+            onClick={() => {
               setCustomFrom(localDateTime(range.start));
               setCustomTo(localDateTime(range.end));
               setRangeError("");
-              setCustomOpen(true);
-            } else {
-              setSelection({ kind: "relative", minutes: Number(value) });
-              setCustomOpen(false);
-            }
-          }}
-          options={[
-            ...[5, 15, 30, 60, 360, 1440].map((n) => ({
-              value: String(n),
-              label:
-                n < 60
-                  ? `Last ${n} minutes`
-                  : n < 1440
-                    ? `Last ${n / 60} ${n === 60 ? "hour" : "hours"}`
-                    : "Last 24 hours",
-            })),
-            { value: "custom", label: "Custom date/time range…" },
-          ]}
-        />
-        <Select
-          label="Container"
-          value={filters.container}
-          onChange={(value) =>
-            setFilters((previous) => ({ ...previous, container: value }))
-          }
-          options={[
-            { value: "", label: "All containers" },
-            ...Array.from(
-              new Set([...logs.map((log) => log.container), filters.container]),
-            )
-              .filter(Boolean)
-              .sort()
-              .map((value) => ({ value, label: value })),
-          ]}
-        />
-        <Select
-          label="Severity"
-          value={filters.level}
-          onChange={(value) =>
-            setFilters((previous) => ({ ...previous, level: value }))
-          }
-          options={[
-            { value: "", label: "All severities" },
-            ...Array.from(new Set([...levels, filters.level]))
-              .filter(Boolean)
-              .map((value) => ({ value, label: value })),
-          ]}
-        />
-        <button
-          className="pino-date-button"
-          aria-expanded={customOpen}
-          onClick={() => {
-            setCustomFrom(localDateTime(range.start));
-            setCustomTo(localDateTime(range.end));
-            setRangeError("");
-            setCustomOpen(!customOpen);
-          }}
-        >
-          Choose dates…
-        </button>
-        <button
-          onClick={() => setRefresh((value) => value + 1)}
-          disabled={loading}
-        >
-          {loading ? "Loading…" : "↻ Refresh"}
-        </button>
-        <label className="pino-auto">
-          <input
-            type="checkbox"
-            checked={autoRefresh}
-            onChange={(e) => setAutoRefresh(e.target.checked)}
-          />{" "}
-          Refresh every 10s
-        </label>
-        <button
-          className="pino-quiet"
-          onClick={() => {
-            setFilters({ container: "", level: "" });
-            setSearch("");
-          }}
-          disabled={!filters.container && !filters.level && !search}
-        >
-          Reset
-        </button>
+              setCustomOpen(!customOpen);
+            }}
+          >
+            Choose dates…
+          </button>
+          <button
+            onClick={() => setRefresh((value) => value + 1)}
+            disabled={loading}
+          >
+            {loading ? "Loading…" : "↻ Refresh"}
+          </button>
+          <Select
+            className="pino-refresh-rate"
+            label="Refresh"
+            value={String(refreshInterval)}
+            onChange={(value) => setRefreshInterval(Number(value))}
+            options={[
+              { value: "0", label: "Off" },
+              { value: "3", label: "Every 3s" },
+              { value: "5", label: "Every 5s" },
+              { value: "10", label: "Every 10s" },
+              { value: "30", label: "Every 30s" },
+              { value: "60", label: "Every 1m" },
+            ]}
+          />
+          <button
+            className="pino-live"
+            aria-pressed={live}
+            onClick={() => {
+              const next = !live;
+              setLive(next);
+              if (next && !refreshInterval) {
+                setRefreshInterval(5);
+              }
+              if (next) {
+                setRefresh((value) => value + 1);
+              }
+            }}
+          >
+            <i aria-hidden="true" /> Live
+          </button>
+          <button
+            className="pino-quiet"
+            onClick={() => {
+              setFilters({ container: "", level: "" });
+              setSearch("");
+            }}
+            disabled={!filters.container && !filters.level && !search}
+          >
+            Reset
+          </button>
+        </div>
       </section>
       {customOpen && (
         <form
@@ -397,6 +447,7 @@ export function App() {
                 String(values.get("to") ?? ""),
               );
               setSelection({ kind: "absolute", range: chosen });
+              setLive(false);
               setRangeError("");
               setCustomOpen(false);
             } catch (err) {
@@ -443,14 +494,12 @@ export function App() {
       <div className="pino-range-summary">
         {new Date(range.start).toLocaleString()} —{" "}
         {new Date(range.end).toLocaleString()} ·{" "}
-        {selection.kind === "absolute" ? "Fixed range" : "Relative range"}
+        {live
+          ? `Live · refresh ${refreshInterval || 5}s`
+          : selection.kind === "absolute"
+            ? "Fixed range"
+            : "Relative range"}
       </div>
-      {source === "demo" && (
-        <div className="pino-notice">
-          Demo mode uses generated Pino logs. Select a configured Loki data
-          source to query your own logs.
-        </div>
-      )}
       <div className="pino-search">
         <span aria-hidden="true">⌕</span>
         <input
